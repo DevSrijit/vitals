@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/devsrijit/wannabe-fit"
+Repository = "https://github.com/DevSrijit/vitals"
 
 [project.scripts]
 vitals = "vitals.cli:main"

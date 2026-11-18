@@ -1,9 +1,18 @@
-# wannabe-fit
+# Vitals
+
+[![CI](https://github.com/DevSrijit/vitals/actions/workflows/ci.yml/badge.svg)](https://github.com/DevSrijit/vitals/actions/workflows/ci.yml)
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB)
+![MCP server](https://img.shields.io/badge/MCP-server-black)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
 Whoop-style recovery, strain, and sleep metrics from a cheap watch, computed on your own machine
-from raw Android Health Connect exports. No cloud account, no subscription, no dashboard, no AI
-inference. The output is a SQLite database, CSV dumps, Markdown reports, and an MCP server so that
-Claude Code, OpenClaw, or any other agent can query your data.
+from raw Android Health Connect exports. No cloud account, no subscription, no AI inference. The
+output is a SQLite database, CSV dumps, Markdown reports, a web dashboard in the style of iOS Health,
+and an MCP server so that Claude Code, OpenClaw, or any other agent can query your data.
+
+![The Vitals dashboard on a phone: the Summary tab with the recovery rings, the Sleep tab with last night's hypnogram, and the Strain tab with daily strain bars. All data in these images is synthetic.](docs/hero.webp)
+
+<sub>Every screenshot in this README shows synthetic demo data from `scripts/demo.sh`, not a real person's health data.</sub>
 
 Built for a CMF Watch Pro 2 that syncs through the Nothing X app. It works with any watch or app that
 writes heart rate, sleep, and SpO2 into Health Connect: Samsung Health, Garmin Connect, Zepp,
@@ -56,14 +65,27 @@ A `workout_metrics` table with one row per session: duration, average and peak H
 max, zone minutes, TRIMP, strain, HR-derived kcal next to the device kcal, and 1-minute heart-rate
 recovery. Plus the raw tables underneath, so you can compute anything else yourself.
 
+## Try it without a watch
+
+```bash
+git clone https://github.com/DevSrijit/vitals.git
+cd vitals
+uv sync
+scripts/demo.sh
+```
+
+The script builds a synthetic 35-day Health Connect export, runs the whole pipeline on it, prints the
+day card, and starts the dashboard on http://localhost:3000. It needs [uv](https://docs.astral.sh/uv/)
+and [Bun](https://bun.sh). It writes only to `.demo/`, so the demo can never mix with real data.
+
 ## Setup
 
 Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), an Android phone on Android 15 or
 newer, and a watch whose app writes to Health Connect.
 
 ```bash
-git clone https://github.com/devsrijit/wannabe-fit.git
-cd wannabe-fit
+git clone https://github.com/DevSrijit/vitals.git
+cd vitals
 uv sync
 cp config.example.yaml config.yaml   # then edit: sex, birth year, weight, timezone
 ```
@@ -100,18 +122,27 @@ scripts/install-launchd.sh          # every 6 hours
 scripts/install-launchd.sh 3600     # every hour
 ```
 
-This installs a launchd agent named `com.wannabe-fit.sync` that runs `vitals sync` and logs to
+This installs a launchd agent named `com.wannabe-fit.sync` (the project's first name) that runs `vitals sync` and logs to
 `data/sync.log`. The sync is idempotent: re-ingesting the same export changes nothing, and rclone only
 transfers the zip when it changed. On Linux, a cron line running `uv run --project <path> vitals sync`
 does the same job.
 
 ## Web dashboard
 
-`web/` is a Next.js site over the same database: recovery ring, hypnogram, zone and load charts, per-workout heart-rate traces, and a glossary that explains every metric with its formula and source. See [web/README.md](web/README.md).
+`web/` is a Next.js site over the same database, built to feel like an iOS app: a recovery ring,
+a hypnogram for each night, zone and load charts, heart-rate traces for each workout, and a glossary
+that explains every metric with its formula and its source. It reads the database read-only. See
+[web/README.md](web/README.md).
 
 ```bash
 cd web && bun install && bun run dev
 ```
+
+Set `VITALS_DB` to point the site at another database, for example `.demo/vitals.db`.
+
+![Three more screens: the Recovery tab with the 30-day recovery score, one strength session with its heart-rate trace through the session, and the Learn page with the exact recovery formula.](docs/gallery.webp)
+
+![The Summary page on a desktop browser: the recovery rings with their three components, and last night's sleep stages.](docs/desktop.webp)
 
 ## Interfaces
 
@@ -137,7 +168,7 @@ cd web && bun install && bun run dev
 Register it in Claude Code:
 
 ```bash
-claude mcp add --scope user vitals -- uv run --project /absolute/path/to/wannabe-fit vitals-mcp
+claude mcp add --scope user vitals -- uv run --project /absolute/path/to/vitals vitals-mcp
 ```
 
 Then ask things like "compare my sleep on training days and rest days this month" or "show my heart
@@ -212,9 +243,11 @@ The constants live in `vitals/metrics.py`.
   `Fit/All Data` folder). Fit auto-detected walks arrive as workouts with source `Fit`.
 - **Different formulas**: every constant is in `vitals/metrics.py`, and `compute` rebuilds the derived
   tables from raw samples, so changes apply to all history at once.
-- **Testing without a phone**: `uv run python scripts/make_fixture.py /tmp/fixture.zip` builds a
-  synthetic 35-day export in the real Health Connect layout. Ingest it from `/tmp`, never from
-  `data/inbox`, or `sync` mixes synthetic rows into your real database.
+- **Testing without a phone**: `scripts/demo.sh --data` builds a synthetic 35-day export in the real
+  Health Connect layout and runs the pipeline on it in `.demo/`. To build the export alone, run
+  `uv run python scripts/make_fixture.py /tmp/fixture.zip`. Never put it in `data/inbox`, or `sync`
+  mixes synthetic rows into your real database. CI runs the same demo on every push and builds the
+  dashboard against it.
 
 ## Limits
 

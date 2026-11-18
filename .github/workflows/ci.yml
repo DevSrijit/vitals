@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pipeline:
+    name: Pipeline on a synthetic export
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv sync
+      - name: Build the demo database
+        run: bash scripts/demo.sh --data
+      - name: Check the computed tables
+        run: |
+          days=$(uv run vitals --config .demo/config.yaml sql "select count(*) from daily where recovery is not null" | tail -1)
+          workouts=$(uv run vitals --config .demo/config.yaml sql "select count(*) from workout_metrics" | tail -1)
+          echo "days with recovery: $days, workouts: $workouts"
+          test "$days" -ge 20
+          test "$workouts" -ge 10
+      - uses: actions/upload-artifact@v4
+        with:
+          name: demo-db
+          path: .demo/vitals.db
+
+  web:
+    name: Dashboard lint, types and build
+    needs: pipeline
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: demo-db
+          path: .demo
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bunx tsc --noEmit
+      - run: bun run build
+        env:
+          VITALS_DB: ${{ github.workspace }}/.demo/vitals.db
